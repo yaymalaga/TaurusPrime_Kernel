@@ -102,6 +102,8 @@ struct clock_event_device {
 	void			(*broadcast)(const struct cpumask *mask);
 	void			(*set_mode)(enum clock_event_mode mode,
 					    struct clock_event_device *);
+	void			(*suspend)(struct clock_event_device *);
+	void			(*resume)(struct clock_event_device *);
 	unsigned long		min_delta_ticks;
 	unsigned long		max_delta_ticks;
 
@@ -169,6 +171,9 @@ extern void tick_broadcast(const struct cpumask *mask);
 extern int tick_receive_broadcast(void);
 #endif
 
+extern void clockevents_suspend(void);
+extern void clockevents_resume(void);
+
 #ifdef CONFIG_GENERIC_CLOCKEVENTS
 extern void clockevents_notify(unsigned long reason, void *arg);
 #else
@@ -178,6 +183,10 @@ extern void clockevents_notify(unsigned long reason, void *arg);
 #else /* CONFIG_GENERIC_CLOCKEVENTS_BUILD */
 
 #define clockevents_notify(reason, arg) do { } while (0)
+
+static inline void clockevents_suspend(void) {}
+static inline void clockevents_resume(void) {}
+
 
 #endif
 
