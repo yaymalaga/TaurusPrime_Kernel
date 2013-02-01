@@ -75,6 +75,20 @@ __rwsem_do_wake(struct rw_semaphore *sem, int wakewrite)
 			/* Wake up a writer. Note that we do not grant it the
 			 * lock - it will have to acquire it when it runs. */
 			wake_up_process(waiter->task);
+
+	if (!wakewrite) {
+		if (waiter->flags & RWSEM_WAITING_FOR_WRITE)
+			goto out;
+		goto dont_wake_writers;
+	}
+
+	/*
+	 * as we support write lock stealing, we can't set sem->activity
+	 * to -1 here to indicate we get the lock. Instead, we wake it up
+	 * to let it go get it again.
+	 */
+	if (waiter->flags & RWSEM_WAITING_FOR_WRITE) {
+		wake_up_process(waiter->task);
 		goto out;
 	}
 
@@ -195,7 +209,7 @@ void __sched __down_write_nested(struct rw_semaphore *sem, int subclass)
 	/* set up my own style of waitqueue */
 	tsk = current;
 	waiter.task = tsk;
-	waiter.type = RWSEM_WAITING_FOR_WRITE;
+	waiter.flags = RWSEM_WAITING_FOR_WRITE;
 	list_add_tail(&waiter.list, &sem->wait_list);
 
 	/* wait for someone to release the lock */
