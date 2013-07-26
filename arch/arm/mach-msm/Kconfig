@@ -2547,7 +2547,6 @@ config HAS_MACH_MEMUTILS
 	help
 	  Faster memcpy performance for Krait
 
-config FORCE_FAST_CHARGE
 	bool "Force AC charge mode at will"
 	default y
 	help

@@ -90,6 +90,7 @@
 	CALGN(	add	pc, r4, ip		)
 
 	PLD(	pld	[r1, #0]		)
+<<<<<<< HEAD
 	PLD(	pld	[r1, #64]		)
 	PLD(	pld	[r1, #128]		)
 	PLD(	pld	[r1, #192]		)
@@ -107,6 +108,23 @@
 		subs	r2, r2, #32
 		bge	3b
 	PLD(	cmn	r2, #512		)
+=======
+2:	PLD(	subs	r2, r2, #448		)
+	/* R2 is now -480 offset from the size passed in*/
+	PLD(	pld	[r1, #64]		)
+	PLD(	pld	[r1, #128]		)
+	PLD(	pld	[r1, #192]		)
+	PLD(	blt	4f			)
+	PLD(	pld	[r1, #256]		)
+	PLD(	pld	[r1, #320]		)
+	PLD(	pld	[r1, #384]		)
+	PLD(	pld	[r1, #448]		)
+3:	PLD(	pld	[r1, #512]		)
+4:	PLD(	ldstr8w	r1, r0, r3, r4, r5, r6, r7, r8, ip, lr, abort=20f )
+		subs	r2, r2, #32
+		bge	3b
+	PLD(	cmn	r2, #448		)
+>>>>>>> 0a363e5... msm: memutils: memcpy, memmove, copy_page optimization
 	PLD(	bge	4b			)
 
 5:		ands	ip, r2, #28
@@ -180,7 +198,11 @@
 		bgt	18f
 
 
+<<<<<<< HEAD
 		.macro	forward_copy_shift pullshift pushshift
+=======
+		.macro	forward_copy_shift pull push
+>>>>>>> 0a363e5... msm: memutils: memcpy, memmove, copy_page optimization
 
 		subs	r2, r2, #28
 		blt	14f
@@ -194,6 +216,7 @@
 11:		stmfd	sp!, {r5 - r9}
 
 	PLD(	pld	[r1, #0]		)
+<<<<<<< HEAD
 	PLD(	pld	[r1, #64]		)
 	PLD(	pld	[r1, #128]		)
 	PLD(	pld	[r1, #192]		)
@@ -226,6 +249,38 @@
 		str8w	r0, r3, r4, r5, r6, r7, r8, r9, ip, , abort=19f
 		bge	12b
 	PLD(	cmn	r2, #448		)
+=======
+	PLD(	subs	r2, r2, #320		)
+	PLD(	pld	[r1, #64]		)
+	PLD(	pld	[r1, #128]		)
+	PLD(	blt	13f			)
+	PLD(	pld	[r1, #192]		)
+	PLD(	pld	[r1, #256]		)
+	PLD(	pld	[r1, #320]		)
+12:	PLD(	pld	[r1, #384]		)
+13:		ldr4w	r1, r4, r5, r6, r7, abort=19f
+		mov	r3, lr, pull #\pull
+		subs	r2, r2, #32
+		ldr4w	r1, r8, r9, ip, lr, abort=19f
+		orr	r3, r3, r4, push #\push
+		mov	r4, r4, pull #\pull
+		orr	r4, r4, r5, push #\push
+		mov	r5, r5, pull #\pull
+		orr	r5, r5, r6, push #\push
+		mov	r6, r6, pull #\pull
+		orr	r6, r6, r7, push #\push
+		mov	r7, r7, pull #\pull
+		orr	r7, r7, r8, push #\push
+		mov	r8, r8, pull #\pull
+		orr	r8, r8, r9, push #\push
+		mov	r9, r9, pull #\pull
+		orr	r9, r9, ip, push #\push
+		mov	ip, ip, pull #\pull
+		orr	ip, ip, lr, push #\push
+		str8w	r0, r3, r4, r5, r6, r7, r8, r9, ip, , abort=19f
+		bge	12b
+	PLD(	cmn	r2, #320		)
+>>>>>>> 0a363e5... msm: memutils: memcpy, memmove, copy_page optimization
 	PLD(	bge	13b			)
 
 		ldmfd	sp!, {r5 - r9}
@@ -233,26 +288,45 @@
 14:		ands	ip, r2, #28
 		beq	16f
 
+<<<<<<< HEAD
 15:		mov	r3, lr, pullbits #\pullshift
 		ldr1w	r1, lr, abort=21f
 		subs	ip, ip, #4
 		orr	r3, r3, lr, pushbits #\pushshift
+=======
+15:		mov	r3, lr, pull #\pull
+		ldr1w	r1, lr, abort=21f
+		subs	ip, ip, #4
+		orr	r3, r3, lr, push #\push
+>>>>>>> 0a363e5... msm: memutils: memcpy, memmove, copy_page optimization
 		str1w	r0, r3, abort=21f
 		bgt	15b
 	CALGN(	cmp	r2, #0			)
 	CALGN(	bge	11b			)
 
+<<<<<<< HEAD
 16:		sub	r1, r1, #(\pushshift / 8)
+=======
+16:		sub	r1, r1, #(\push / 8)
+>>>>>>> 0a363e5... msm: memutils: memcpy, memmove, copy_page optimization
 		b	8b
 
 		.endm
 
 
+<<<<<<< HEAD
 		forward_copy_shift	pullshift=8	pushshift=24
 
 17:		forward_copy_shift	pullshift=16	pushshift=16
 
 18:		forward_copy_shift	pullshift=24	pushshift=8
+=======
+		forward_copy_shift	pull=8	push=24
+
+17:		forward_copy_shift	pull=16	push=16
+
+18:		forward_copy_shift	pull=24	push=8
+>>>>>>> 0a363e5... msm: memutils: memcpy, memmove, copy_page optimization
 
 
 /*
