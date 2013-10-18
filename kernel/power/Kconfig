@@ -342,3 +342,10 @@ config DEDUCE_WAKEUP_REASONS
 	bool
 	default n
 
+config SPEEDUP_KEYRESUME
+	bool "Speed up late resume"
+	depends on SUSPEND
+	default y
+	---help---
+	  Speed up system resume
+
