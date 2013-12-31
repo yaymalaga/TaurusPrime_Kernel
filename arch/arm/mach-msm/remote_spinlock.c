@@ -27,6 +27,241 @@
 static void remote_spin_release_all_locks(uint32_t pid, int count);
 
 #if defined(CONFIG_MSM_REMOTE_SPINLOCK_SFPB)
+#define SPINLOCK_PID_APPS 1
+
+#define AUTO_MODE -1
+#define DEKKERS_MODE 1
+#define SWP_MODE 2
+#define LDREX_MODE 3
+#define SFPB_MODE 4
+
+#if defined(CONFIG_MSM_REMOTE_SPINLOCK_DEKKERS) ||\
+		defined(CONFIG_MSM_REMOTE_SPINLOCK_SWP) ||\
+		defined(CONFIG_MSM_REMOTE_SPINLOCK_LDREX) ||\
+		defined(CONFIG_MSM_REMOTE_SPINLOCK_SFPB)
+
+#ifdef CONFIG_MSM_REMOTE_SPINLOCK_DEKKERS
+/*
+ * Use Dekker's algorithm when LDREX/STREX and SWP are unavailable for
+ * shared memory
+ */
+#define CURRENT_MODE_INIT DEKKERS_MODE;
+#endif
+
+#ifdef CONFIG_MSM_REMOTE_SPINLOCK_SWP
+/* Use SWP-based locks when LDREX/STREX are unavailable for shared memory. */
+#define CURRENT_MODE_INIT SWP_MODE;
+#endif
+
+#ifdef CONFIG_MSM_REMOTE_SPINLOCK_LDREX
+/* Use LDREX/STREX for shared memory locking, when available */
+#define CURRENT_MODE_INIT LDREX_MODE;
+#endif
+
+#ifdef CONFIG_MSM_REMOTE_SPINLOCK_SFPB
+/* Use SFPB Hardware Mutex Registers */
+#define CURRENT_MODE_INIT SFPB_MODE;
+#endif
+
+#else
+/* Use DT info to configure with a fallback to LDREX if DT is missing */
+#define CURRENT_MODE_INIT AUTO_MODE;
+#endif
+
+#if defined(CONFIG_THUMB2_KERNEL) || defined(CONFIG_ARCH_MSM8974) || defined(CONFIG_ARCH_MSM8226)
+#define SWP_OFF
+#endif
+
+static int current_mode = CURRENT_MODE_INIT;
+
+static int is_hw_lock_type;
+static DEFINE_MUTEX(ops_init_lock);
+
+struct spinlock_ops {
+	void (*lock)(raw_remote_spinlock_t *lock);
+	void (*unlock)(raw_remote_spinlock_t *lock);
+	int (*trylock)(raw_remote_spinlock_t *lock);
+	int (*release)(raw_remote_spinlock_t *lock, uint32_t pid);
+	int (*owner)(raw_remote_spinlock_t *lock);
+	void (*lock_rlock_id)(raw_remote_spinlock_t *lock, uint32_t tid);
+	void (*unlock_rlock)(raw_remote_spinlock_t *lock);
+};
+
+static struct spinlock_ops current_ops;
+
+static int remote_spinlock_init_address(int id, _remote_spinlock_t *lock);
+
+/* dekkers implementation --------------------------------------------------- */
+#define DEK_LOCK_REQUEST		1
+#define DEK_LOCK_YIELD			(!DEK_LOCK_REQUEST)
+#define DEK_YIELD_TURN_SELF		0
+static void __raw_remote_dek_spin_lock(raw_remote_spinlock_t *lock)
+{
+	lock->dek.self_lock = DEK_LOCK_REQUEST;
+
+	while (lock->dek.other_lock) {
+
+		if (lock->dek.next_yield == DEK_YIELD_TURN_SELF)
+			lock->dek.self_lock = DEK_LOCK_YIELD;
+
+		while (lock->dek.other_lock)
+			;
+
+		lock->dek.self_lock = DEK_LOCK_REQUEST;
+	}
+	lock->dek.next_yield = DEK_YIELD_TURN_SELF;
+
+	smp_mb();
+}
+
+static int __raw_remote_dek_spin_trylock(raw_remote_spinlock_t *lock)
+{
+	lock->dek.self_lock = DEK_LOCK_REQUEST;
+
+	if (lock->dek.other_lock) {
+		lock->dek.self_lock = DEK_LOCK_YIELD;
+		return 0;
+	}
+
+	lock->dek.next_yield = DEK_YIELD_TURN_SELF;
+
+	smp_mb();
+	return 1;
+}
+
+static void __raw_remote_dek_spin_unlock(raw_remote_spinlock_t *lock)
+{
+	smp_mb();
+
+	lock->dek.self_lock = DEK_LOCK_YIELD;
+}
+
+static int __raw_remote_dek_spin_release(raw_remote_spinlock_t *lock,
+		uint32_t pid)
+{
+	return -EPERM;
+}
+
+static int __raw_remote_dek_spin_owner(raw_remote_spinlock_t *lock)
+{
+	return -EPERM;
+}
+/* end dekkers implementation ----------------------------------------------- */
+
+#ifndef SWP_OFF
+/* swp implementation ------------------------------------------------------- */
+static void __raw_remote_swp_spin_lock(raw_remote_spinlock_t *lock)
+{
+	unsigned long tmp;
+
+	__asm__ __volatile__(
+"1:     swp     %0, %2, [%1]\n"
+"       teq     %0, #0\n"
+"       bne     1b"
+	: "=&r" (tmp)
+	: "r" (&lock->lock), "r" (1)
+	: "cc");
+
+	smp_mb();
+}
+
+static int __raw_remote_swp_spin_trylock(raw_remote_spinlock_t *lock)
+{
+	unsigned long tmp;
+
+	__asm__ __volatile__(
+"       swp     %0, %2, [%1]\n"
+	: "=&r" (tmp)
+	: "r" (&lock->lock), "r" (1)
+	: "cc");
+
+	if (tmp == 0) {
+		smp_mb();
+		return 1;
+	}
+	return 0;
+}
+
+static void __raw_remote_swp_spin_unlock(raw_remote_spinlock_t *lock)
+{
+	int lock_owner;
+
+	smp_mb();
+	lock_owner = readl_relaxed(&lock->lock);
+	if (lock_owner != SPINLOCK_PID_APPS) {
+		pr_err("%s: spinlock not owned by Apps (actual owner is %d)\n",
+				__func__, lock_owner);
+	}
+
+	__asm__ __volatile__(
+"       str     %1, [%0]"
+	:
+	: "r" (&lock->lock), "r" (0)
+	: "cc");
+}
+/* end swp implementation --------------------------------------------------- */
+#endif
+
+/* ldrex implementation ----------------------------------------------------- */
+static char *ldrex_compatible_string = "qcom,ipc-spinlock-ldrex";
+
+static void __raw_remote_ex_spin_lock(raw_remote_spinlock_t *lock)
+{
+	unsigned long tmp;
+
+	__asm__ __volatile__(
+"1:     ldrex   %0, [%1]\n"
+"       teq     %0, #0\n"
+"       strexeq %0, %2, [%1]\n"
+"       teqeq   %0, #0\n"
+"       bne     1b"
+	: "=&r" (tmp)
+	: "r" (&lock->lock), "r" (SPINLOCK_PID_APPS)
+	: "cc");
+
+	smp_mb();
+}
+
+static int __raw_remote_ex_spin_trylock(raw_remote_spinlock_t *lock)
+{
+	unsigned long tmp;
+
+	__asm__ __volatile__(
+"       ldrex   %0, [%1]\n"
+"       teq     %0, #0\n"
+"       strexeq %0, %2, [%1]\n"
+	: "=&r" (tmp)
+	: "r" (&lock->lock), "r" (SPINLOCK_PID_APPS)
+	: "cc");
+
+	if (tmp == 0) {
+		smp_mb();
+		return 1;
+	}
+	return 0;
+}
+
+static void __raw_remote_ex_spin_unlock(raw_remote_spinlock_t *lock)
+{
+	int lock_owner;
+
+	smp_mb();
+	lock_owner = readl_relaxed(&lock->lock);
+	if (lock_owner != SPINLOCK_PID_APPS) {
+		pr_err("%s: spinlock not owned by Apps (actual owner is %d)\n",
+				__func__, lock_owner);
+	}
+
+	__asm__ __volatile__(
+"       str     %1, [%0]\n"
+	:
+	: "r" (&lock->lock), "r" (0)
+	: "cc");
+}
+/* end ldrex implementation ------------------------------------------------- */
+
+/* sfpb implementation ------------------------------------------------------ */
+>>>>>>> f9d1abc... msm: use of swp{b} is deprecated for ARMv6+
 #define SFPB_SPINLOCK_COUNT 8
 #define MSM_SFPB_MUTEX_REG_BASE 0x01200600
 #define MSM_SFPB_MUTEX_REG_SIZE	(33 * 4)
@@ -83,6 +318,28 @@ void _remote_spin_release_all(uint32_t pid)
 	remote_spin_release_all_locks(pid, SMEM_SPINLOCK_COUNT);
 }
 
+static void initialize_ops(void)
+{
+	struct device_node *node;
+
+	switch (current_mode) {
+	case DEKKERS_MODE:
+		current_ops.lock = __raw_remote_dek_spin_lock;
+		current_ops.unlock = __raw_remote_dek_spin_unlock;
+		current_ops.trylock = __raw_remote_dek_spin_trylock;
+		current_ops.release = __raw_remote_dek_spin_release;
+		current_ops.owner = __raw_remote_dek_spin_owner;
+		is_hw_lock_type = 0;
+		break;
+#ifndef SWP_OFF
+	case SWP_MODE:
+		current_ops.lock = __raw_remote_swp_spin_lock;
+		current_ops.unlock = __raw_remote_swp_spin_unlock;
+		current_ops.trylock = __raw_remote_swp_spin_trylock;
+		current_ops.release = __raw_remote_gen_spin_release;
+		current_ops.owner = __raw_remote_gen_spin_owner;
+		is_hw_lock_type = 0;
+		break;
 #endif
 
 /**
