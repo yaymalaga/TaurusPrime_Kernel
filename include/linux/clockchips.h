@@ -178,14 +178,14 @@ extern void clockevents_suspend(void);
 extern void clockevents_resume(void);
 
 #ifdef CONFIG_GENERIC_CLOCKEVENTS
-extern void clockevents_notify(unsigned long reason, void *arg);
+extern int clockevents_notify(unsigned long reason, void *arg);
 #else
-# define clockevents_notify(reason, arg) do { } while (0)
+static inline int clockevents_notify(unsigned long reason, void *arg) { return 0; }
 #endif
 
 #else /* CONFIG_GENERIC_CLOCKEVENTS_BUILD */
 
-#define clockevents_notify(reason, arg) do { } while (0)
+static inline int clockevents_notify(unsigned long reason, void *arg) { return 0; }
 
 static inline void clockevents_suspend(void) {}
 static inline void clockevents_resume(void) {}
