@@ -133,7 +133,7 @@ config FUNCTION_TRACER
 	select KALLSYMS
 	select GENERIC_TRACER
 	select CONTEXT_SWITCH_TRACER
-        default n
+	default n
 	help
 	  Enable the kernel to trace every kernel function. This is done
 	  by using a compiler feature to insert a small, 5-byte No-Operation
@@ -314,7 +314,7 @@ config STACK_TRACER
 	select FUNCTION_TRACER
 	select STACKTRACE
 	select KALLSYMS
-        default n
+	default n
 	help
 	  This special tracer records the maximum stack footprint of the
 	  kernel and displays it in /sys/kernel/debug/tracing/stack_trace.
