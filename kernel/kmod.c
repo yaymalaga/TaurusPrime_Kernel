@@ -221,12 +221,13 @@ fail:
 	return 0;
 }
 
-static void call_usermodehelper_freeinfo(struct subprocess_info *info)
+void call_usermodehelper_freeinfo(struct subprocess_info *info)
 {
 	if (info->cleanup)
 		(*info->cleanup)(info);
 	kfree(info);
 }
+EXPORT_SYMBOL(call_usermodehelper_freeinfo);
 
 static void umh_complete(struct subprocess_info *sub_info)
 {
