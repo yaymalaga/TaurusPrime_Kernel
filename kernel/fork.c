@@ -113,10 +113,6 @@ int nr_processes(void)
 	return total;
 }
 
-void __weak arch_release_task_struct(struct task_struct *tsk)
-{
-}
-
 #ifndef CONFIG_ARCH_TASK_STRUCT_ALLOCATOR
 static struct kmem_cache *task_struct_cachep;
 
@@ -125,17 +121,17 @@ static inline struct task_struct *alloc_task_struct_node(int node)
 	return kmem_cache_alloc_node(task_struct_cachep, GFP_KERNEL, node);
 }
 
+void __weak arch_release_task_struct(struct task_struct *tsk) { }
+
 static inline void free_task_struct(struct task_struct *tsk)
 {
+	arch_release_task_struct(tsk);
 	kmem_cache_free(task_struct_cachep, tsk);
 }
 #endif
 
-void __weak arch_release_thread_info(struct thread_info *ti)
-{
-}
-
 #ifndef CONFIG_ARCH_THREAD_INFO_ALLOCATOR
+void __weak arch_release_thread_info(struct thread_info *ti) { }
 
 /*
  * Allocate pages if THREAD_SIZE is >= PAGE_SIZE, otherwise use a
@@ -157,6 +153,7 @@ static struct thread_info *alloc_thread_info_node(struct task_struct *tsk,
 
 static inline void free_thread_info(struct thread_info *ti)
 {
+	arch_release_thread_info(ti);
 	free_pages((unsigned long)ti, THREAD_SIZE_ORDER);
 }
 # else
@@ -170,6 +167,7 @@ static struct thread_info *alloc_thread_info_node(struct task_struct *tsk,
 
 static void free_thread_info(struct thread_info *ti)
 {
+	arch_release_thread_info(ti);
 	kmem_cache_free(thread_info_cache, ti);
 }
 
@@ -213,12 +211,10 @@ static void account_kernel_stack(struct thread_info *ti, int account)
 void free_task(struct task_struct *tsk)
 {
 	account_kernel_stack(tsk->stack, -1);
-	arch_release_thread_info(tsk->stack);
 	free_thread_info(tsk->stack);
 	rt_mutex_debug_task_free(tsk);
 	ftrace_graph_exit_task(tsk);
 	put_seccomp_filter(tsk);
-	arch_release_task_struct(tsk);
 	free_task_struct(tsk);
 }
 EXPORT_SYMBOL(free_task);
@@ -329,12 +325,14 @@ static struct task_struct *dup_task_struct(struct task_struct *orig)
 		return NULL;
 
 	ti = alloc_thread_info_node(tsk, node);
-	if (!ti)
-		goto free_tsk;
+	if (!ti) {
+		free_task_struct(tsk);
+		return NULL;
+	}
 
 	err = arch_dup_task_struct(tsk, orig);
 	if (err)
-		goto free_ti;
+		goto out;
 
 	tsk->stack = ti;
 #ifdef CONFIG_SECCOMP
@@ -374,9 +372,8 @@ static struct task_struct *dup_task_struct(struct task_struct *orig)
 #endif
 	return tsk;
 
-free_ti:
+out:
 	free_thread_info(ti);
-free_tsk:
 	free_task_struct(tsk);
 	return NULL;
 }
