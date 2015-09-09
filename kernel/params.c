@@ -85,13 +85,11 @@ bool parameq(const char *a, const char *b)
 
 static int parse_one(char *param,
 		     char *val,
-		     const char *doing,
 		     const struct kernel_param *params,
 		     unsigned num_params,
 		     s16 min_level,
 		     s16 max_level,
-		     int (*handle_unknown)(char *param, char *val,
-				     const char *doing))
+		     int (*handle_unknown)(char *param, char *val))
 {
 	unsigned int i;
 	int err;
@@ -106,8 +104,8 @@ static int parse_one(char *param,
 			if (!val && params[i].ops->set != param_set_bool
 			    && params[i].ops->set != param_set_bint)
 				return -EINVAL;
-			pr_debug("handling %s with %p\n", param,
-				params[i].ops->set);
+			pr_debug("They are equal!  Calling %p\n",
+			       params[i].ops->set);
 			mutex_lock(&param_lock);
 			err = params[i].ops->set(val, &params[i]);
 			mutex_unlock(&param_lock);
@@ -116,11 +114,11 @@ static int parse_one(char *param,
 	}
 
 	if (handle_unknown) {
-		pr_debug("doing %s: %s='%s'\n", doing, param, val);
-		return handle_unknown(param, val, doing);
+		pr_debug("Unknown argument: calling %p\n", handle_unknown);
+		return handle_unknown(param, val);
 	}
 
-	pr_debug("Unknown argument '%s'\n", param);
+	pr_debug("Unknown argument `%s'\n", param);
 	return -ENOENT;
 }
 
@@ -177,21 +175,20 @@ static char *next_arg(char *args, char **param, char **val)
 }
 
 /* Args looks like "foo=bar,bar2 baz=fuz wiz". */
-int parse_args(const char *doing,
+int parse_args(const char *name,
 	       char *args,
 	       const struct kernel_param *params,
 	       unsigned num,
 	       s16 min_level,
 	       s16 max_level,
-	       int (*unknown)(char *param, char *val, const char *doing))
+	       int (*unknown)(char *param, char *val))
 {
 	char *param, *val;
 
+	pr_debug("Parsing ARGS: %s\n", args);
+
 	/* Chew leading spaces */
 	args = skip_spaces(args);
-
-	if (args && *args)
-		pr_debug("doing %s, parsing ARGS: '%s'\n", doing, args);
 
 	while (*args) {
 		int ret;
@@ -199,7 +196,7 @@ int parse_args(const char *doing,
 
 		args = next_arg(args, &param, &val);
 		irq_was_disabled = irqs_disabled();
-		ret = parse_one(param, val, doing, params, num,
+		ret = parse_one(param, val, params, num,
 				min_level, max_level, unknown);
 		if (irq_was_disabled && !irqs_disabled()) {
 			printk(KERN_WARNING "parse_args(): option '%s' enabled "
@@ -208,19 +205,19 @@ int parse_args(const char *doing,
 		switch (ret) {
 		case -ENOENT:
 			printk(KERN_ERR "%s: Unknown parameter `%s'\n",
-			       doing, param);
+			       name, param);
 			return ret;
 		case -ENOSPC:
 			printk(KERN_ERR
 			       "%s: `%s' too large for parameter `%s'\n",
-			       doing, val ?: "", param);
+			       name, val ?: "", param);
 			return ret;
 		case 0:
 			break;
 		default:
 			printk(KERN_ERR
 			       "%s: `%s' invalid for parameter `%s'\n",
-			       doing, val ?: "", param);
+			       name, val ?: "", param);
 			return ret;
 		}
 	}
