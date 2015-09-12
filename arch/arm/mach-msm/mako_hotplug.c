@@ -540,7 +540,7 @@ static int __devinit mako_hotplug_probe(struct platform_device *pdev)
 	INIT_WORK(&suspend, mako_hotplug_suspend);
 	INIT_DELAYED_WORK(&decide_hotplug, decide_hotplug_func);
 
-	qqueue_delayed_work(wq, &decide_hotplug, HZ * 30);
+	queue_delayed_work(wq, &decide_hotplug, HZ * 30);
 
 	register_early_suspend(&early_suspend);
 err:
