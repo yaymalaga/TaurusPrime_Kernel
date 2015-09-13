@@ -35,7 +35,7 @@
 #define DEFAULT_LOAD_THRESHOLD 80
 #define DEFAULT_HIGH_LOAD_COUNTER 10
 #define DEFAULT_MAX_LOAD_COUNTER 20
-#define DEFAULT_CPUFREQ_UNPLUG_LIMIT 702000
+#define DEFAULT_CPUFREQ_UNPLUG_LIMIT 1134000
 #define DEFAULT_MIN_TIME_CPU_ONLINE 1
 #define DEFAULT_TIMER 1
 
@@ -223,8 +223,9 @@ static void __ref decide_hotplug_func(struct work_struct *work)
 	 * reschedule early when users desire to run with all cores online
 	 */
 	if (unlikely(!t->load_threshold &&
-			online_cpus == NUM_POSSIBLE_CPUS))
+			online_cpus == NUM_POSSIBLE_CPUS)) {
 		goto reschedule;
+    }
 
 	for (cpu = 0; cpu < 2; cpu++)
 		cur_load += cpufreq_quick_get_util(cpu);
@@ -244,20 +245,10 @@ static void __ref decide_hotplug_func(struct work_struct *work)
 		if (online_cpus > 2)
 			cpu_smash(cur_load);
 	}
-
-	queue_delayed_work(wq, &decide_hotplug,
+reschedule:
+	queue_delayed_work_on(0, wq, &decide_hotplug,
 		msecs_to_jiffies(t->timer * HZ));
 
-	return;
-
-reschedule:
-	/*
-	 * This reschedule is specially for cases where the user wants to
-	 * run either dual-core or quad-core permanently - for that reason
-	 * we don't need to run this work every 100ms, but rather just
-	 * once every 2 seconds
-	 */
-	queue_delayed_work(wq, &decide_hotplug, HZ * 2);
 }
 
 static void mako_hotplug_suspend(struct work_struct *work)
@@ -506,9 +497,7 @@ static int __devinit mako_hotplug_probe(struct platform_device *pdev)
 	int ret = 0;
 	struct hotplug_tunables *t = &tunables;
 
-	wq = alloc_workqueue("mako_hotplug_workqueue",
-		WQ_FREEZABLE |
-		WQ_UNBOUND, 1);
+	wq = alloc_workqueue("mako_hotplug_workqueue", WQ_FREEZABLE, 1);
 
 	if (!wq) {
 		ret = -ENOMEM;
@@ -540,7 +529,7 @@ static int __devinit mako_hotplug_probe(struct platform_device *pdev)
 	INIT_WORK(&suspend, mako_hotplug_suspend);
 	INIT_DELAYED_WORK(&decide_hotplug, decide_hotplug_func);
 
-	queue_delayed_work(wq, &decide_hotplug, HZ * 30);
+	queue_delayed_work_on(0, wq, &decide_hotplug, HZ * 30);
 
 	register_early_suspend(&early_suspend);
 err:
