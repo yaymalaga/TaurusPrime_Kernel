@@ -3362,8 +3362,6 @@ static void bfq_insert_request(struct request_queue *q, struct request *rq)
 			bfq_bfqq_increase_failed_cooperations(bfqq);
 	}
 
-	bfq_init_prio_data(bfqq, RQ_BIC(rq)->icq.ioc);
-
 	bfq_add_request(rq);
 
 	/*
