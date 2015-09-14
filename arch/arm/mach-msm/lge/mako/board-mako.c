@@ -1436,13 +1436,6 @@ static struct msm_rpmrs_level msm_rpmrs_levels[] = {
 		1, 784, 180000, 100,
 	},
 
- 	{
-		MSM_PM_SLEEP_MODE_RETENTION,
-		MSM_RPMRS_LIMITS(ON, ACTIVE, MAX, ACTIVE),
-		true,
-		415, 715, 340827, 475,
-	},
-
 	{
 		MSM_PM_SLEEP_MODE_RETENTION,
 		MSM_RPMRS_LIMITS(ON, ACTIVE, MAX, ACTIVE),
@@ -1562,7 +1555,6 @@ static uint8_t spm_power_collapse_with_rpm[] __initdata = {
 };
 
 static struct msm_spm_seq_entry msm_spm_boot_cpu_seq_list[] __initdata = {
-
 	[0] = {
 		.mode = MSM_SPM_MODE_CLOCK_GATING,
 		.notify_rpm = false,
@@ -2104,7 +2096,6 @@ static void __init apq8064_common_init(void)
 	msm_spm_init(msm_spm_data, ARRAY_SIZE(msm_spm_data));
 	msm_spm_l2_init(msm_spm_l2_data);
 	BUG_ON(msm_pm_boot_init(&msm_pm_boot_pdata));
-	msm_pm_set_tz_retention_flag(1);
 }
 
 static void __init apq8064_allocate_memory_regions(void)
