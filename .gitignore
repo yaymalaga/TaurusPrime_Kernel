@@ -88,3 +88,5 @@ GTAGS
 
 zip/
 build.sh
+
+drivers/media/platform/
